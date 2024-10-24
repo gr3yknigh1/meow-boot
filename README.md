@@ -1,12 +1,6 @@
-# BadOS
+# Meow bootloader
 
-> It's bad. Do not use it.
-
-## Running
-
-```bash
-<TO-DO>
-```
+> Learning how to program in assembly and make bootloader at the same time.
 
 ## Build dependencies
 
@@ -18,3 +12,14 @@
 make all
 ```
 
+## Running
+
+```bash
+make run
+```
+
+OR
+
+```
+qemu-system-x86_64 ./build/boot_floppy.img
+```

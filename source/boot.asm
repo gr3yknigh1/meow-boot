@@ -1,5 +1,5 @@
 ;
-; BADOS Bootloader. Nothing serious like Linux. Just for fun and education.
+; Meow Bootloader. Nothing serious like Linux. Just for fun and education.
 ;
 ; FILE          source/boot.asm
 ;
@@ -188,9 +188,6 @@ bootloader_entry:
 	mov ss, ax
 	mov sp, BOOT_SECTOR_ADDR	; Stack will grows downwards
 
-    ; Hello there!
-    mov si, message_boot_hello_world
-
     ; Loading kernel
     mov ah, INT_DISK_READ_SECTORS    ; Subroutine code
     mov al, 7                        ; Count of sectors to read
@@ -207,9 +204,6 @@ bootloader_entry:
 	call bios_puts
     ret
 .bootloader_entry__kernel_load_ok:
-    mov si, message_boot_kernel_load_ok
-    call bios_puts
-
     jmp KERNEL_SECTOR_ADDR
     ret
 
@@ -547,7 +541,7 @@ kernel_shell_loop:
 ; end kernel_shell_loop
 
 message_kernel_welcome:
-    db "Welcome to BadOS!", ENDLINE, 0
+    db "Welcome to Meow!", ENDLINE, 0
 message_kernel_welcome_sailor:
     db "Hello sailor!", ENDLINE, 0
 message_kernel_meow:
