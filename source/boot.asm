@@ -4,14 +4,20 @@
 %define INT_KEYBOARD 09h
 %define INT_VIDEO    10h
 %define INT_DISK     13h   ; @see https://en.wikipedia.org/wiki/INT_13H
+%define INT_MISC     15h
 
 ; INT_VIDEO 
 ; AH - register
 %define INT_VIDEO_TTY_WRITE_CHAR 0eh
 %define INT_VIDEO_SET_MODE       00h
 
+; INT_DISK
 ; AH - register
 %define INT_DISK_READ_SECTORS    02h
+
+; INT_MISC
+; AH - register
+%define INT_MISC_WAIT            86h
 
 ; Other macros
 %define ENDLINE	0x0D, 0x0A
@@ -28,6 +34,21 @@ bits	16
 start:
 	call bootloader_entry
     call bios_halt
+    ret
+
+;
+; void bios_wait(int milliseconds);
+;
+; @breaf Sleeps for N milliseconds
+; @param si
+bios_wait:
+    push si
+    push ax
+    mov ax, INT_MISC_WAIT   ; Wait subroutine
+    mov dx, si              ; Milliseconds
+    int INT_MISC    
+    pop ax
+    pop si
     ret
 
 ;
@@ -59,7 +80,6 @@ bios_halt:
 ; @param ds:si Pointer to string to put in TTY
 ;
 bios_puts:
-	push si
 	push ax
     jmp .bios_puts__loop
 .bios_puts__loop:
@@ -73,7 +93,6 @@ bios_puts:
 	jmp .bios_puts__loop
 .bios_puts__done:
 	pop ax
-	pop si
 	ret
 
 ;
@@ -113,6 +132,7 @@ bootloader_entry:
 .bootloader_entry__kernel_load_ok:
     mov si, message_boot_kernel_load_ok
     call bios_puts
+
     jmp KERNEL_SECTOR_ADDR
     ret
 
@@ -131,23 +151,37 @@ jmp kernel_boot
 %define KERNEL_INPUT_BUFFER_SIZE 255
 
 ;
-; void io_memory_zero(void *buffer, int buffer_size);
+; void memory_zero(void *buffer, int buffer_size);
 ;
 ; @breaf Zeroing the buffer.
 ; @param si Buffer address
 ; @param bx Buffer size
-io_memory_zero:
+memory_zero:
+    push si
     push cx
+
     mov cx, 0
-.io_memory_zero__loop:
+.memory_zero__loop:
     cmp cx, bx
-    je .io_memory_zero__end
+    je .memory_zero__end
     mov byte [si], 0
     inc si
     inc cx
-    jmp .io_memory_zero__loop
-.io_memory_zero__end:
+    jmp .memory_zero__loop
+.memory_zero__end:
+
     pop cx
+    pop si
+    ret
+
+;
+; void bios_read_input(void *buffer)
+; 
+; @breaf Write input to specified buffer
+;
+; @param si Address of the buffer in which routine should write user input.
+;
+bios_read_input:
     ret
 
 ;
@@ -156,6 +190,8 @@ io_memory_zero:
 ; @breaf Kernel boot startup code.
 ;
 kernel_boot:
+    push si
+
     call bios_tty_clear
 
     mov si, message_kernel_welcome
@@ -163,26 +199,61 @@ kernel_boot:
 
     call kernel_shell_loop
 
+    mov si, message_kernel_exiting
+    call bios_puts
+
     call bios_halt
 
+    pop si
     ret
 
+;
+; void kernel_shell_handle_command(void *input_buffer);
+;
+; @breaf Handles what to do when user types commands.
+;
+kernel_shell_handle_command:
+    ret
+
+;
+; void kernel_shell_loop(void);
+;
+; @breaf Shell mainloop, which waits new commands to be typed.
+;
 kernel_shell_loop:
     ; TODO(gr3yknigh1): Make it not infinite [2024/10/24]
+    jmp .kernel_shell_loop__begin
+
+.kernel_shell_loop__begin:
+    push si
+    push bx
 
     ; Clear input buffer
     mov si, kernel_shell_input_buffer
     mov bx, KERNEL_INPUT_BUFFER_SIZE
-    call io_memory_zero
+    call memory_zero
 
     ; Printing the prompt prefix
     mov si, kernel_shell_prompt
     call bios_puts
 
+    ; Reading user input
+    mov si, kernel_shell_input_buffer
+    call bios_read_input
+
+    mov si, kernel_shell_input_buffer
+    call kernel_shell_handle_command
+
+    jmp .kernel_shell_loop__begin
+ 
+    pop bx
+    pop si
     ret
 
 message_kernel_welcome:
     db "KERNEL: Hello sailor!", ENDLINE, 0
+message_kernel_exiting:
+    db "KERNEL: Quiting...", ENDLINE, 0
 
 kernel_shell_input_buffer times KERNEL_INPUT_BUFFER_SIZE db 0
 kernel_shell_prompt db "> ", 0
