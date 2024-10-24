@@ -47,7 +47,12 @@
 %define INT_KEYBOARD_READ_CHAR   00h
 
 ; Other macros
+; TODO: Replace ENDLINE with NEWLINE
 %define ENDLINE	0x0D, 0x0A
+%define NEWLINE	0x0D, 0x0A
+
+; ASCII
+%define ASCII_NL 0x0A
 
 %define BOOT_SECTOR_MAGIC    0xaa55
 %define BOOT_SECTOR_ADDR     0x7c00
@@ -485,7 +490,7 @@ kernel_shell_handle_command:
     jmp .kernel_shell_handle_command__end
 
 .kernel_shell_handle_command__handle_help:
-    mov si, message_kernel_welcome_sailor
+    mov si, message_kernel_shell_help
     call bios_puts
     jmp .kernel_shell_handle_command__end
 
@@ -541,13 +546,15 @@ kernel_shell_loop:
 ; end kernel_shell_loop
 
 message_kernel_welcome:
-    db "Welcome to Meow!", ENDLINE, 0
+    db "Welcome to Meow boot!", ENDLINE, 0
 message_kernel_welcome_sailor:
     db "Hello sailor!", ENDLINE, 0
 message_kernel_meow:
     db "Meow meow!!!", ENDLINE, 0
 message_kernel_exiting:
     db "KERNEL: Quiting...", ENDLINE, 0
+message_kernel_shell_help:
+    db "Commands: ", NEWLINE, "  'help':   display this message.", NEWLINE, "  'meow':   to be meow.", NEWLINE, "  'reboot': to reboot.", NEWLINE, "  'clear':  to clean the screen.", ENDLINE, 0
 message_kernel_shell_empty_command:
     db "SHELL: Empty command", ENDLINE, 0
 message_kernel_shell_invalid_command:
