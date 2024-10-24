@@ -1,15 +1,29 @@
+;
+; BADOS Bootloader. Nothing serious. Just for fun and education.
+;
+; FILE          source/boot.asm
+;
+; AUTHORS
+;               Ilya Akkuzin <gr3yknigh1@gmail.com>
+;
+; COPYRIGHT     2024 (c) Ilya Akkuzin, all rights reserved
+;
+; REFERENCES
+;
+;      - Table for BIOS interupts: <www.ctyme.com/intr>
+;
 
 ; @breaf BIOS interupt call list.
 ; @see https://en.wikipedia.org/wiki/BIOS_interrupt_call
-%define INT_KEYBOARD 09h
 %define INT_VIDEO    10h
 %define INT_DISK     13h   ; @see https://en.wikipedia.org/wiki/INT_13H
 %define INT_MISC     15h
+%define INT_KEYBOARD 16h
 
-; INT_VIDEO 
+; INT_VIDEO
 ; AH - register
-%define INT_VIDEO_TTY_WRITE_CHAR 0eh
 %define INT_VIDEO_SET_MODE       00h
+%define INT_VIDEO_TTY_WRITE_CHAR 0eh
 
 ; INT_DISK
 ; AH - register
@@ -18,6 +32,10 @@
 ; INT_MISC
 ; AH - register
 %define INT_MISC_WAIT            86h
+
+; INT_KEYBOARD
+; AH - register
+%define INT_KEYBOARD_READ_CHAR   00h
 
 ; Other macros
 %define ENDLINE	0x0D, 0x0A
@@ -46,10 +64,35 @@ bios_wait:
     push ax
     mov ax, INT_MISC_WAIT   ; Wait subroutine
     mov dx, si              ; Milliseconds
-    int INT_MISC    
+    int INT_MISC
     pop ax
     pop si
     ret
+; end bios_wait
+
+;
+; void bios_put_newline(void);
+;
+; @breaf Puts in TTY screen '\r' and '\n' characters
+;
+bios_put_newline:
+    push ax
+    push bx
+
+    mov ah, INT_VIDEO_TTY_WRITE_CHAR
+
+    mov bh, 0x00        ; black background
+    mov bl, 0x07        ; white foreground
+
+    mov al, 0x0D        ; \r character
+    int INT_VIDEO
+    mov al, 0x0A        ; \n character
+    int INT_VIDEO
+
+    pop bx
+    pop ax
+    ret
+; end bios_put_newline
 
 ;
 ; void bios_tty_clear(void);
@@ -63,6 +106,8 @@ bios_tty_clear:
     int INT_VIDEO
     pop ax
     ret
+; end bios_tty_clear
+
 ;
 ; [[noreturn]] void bios_halt(void);
 ;
@@ -73,6 +118,7 @@ bios_halt:
 .bios_halt_loop:
 	jmp	.bios_halt_loop
     ret
+; end bios_halt
 
 ;
 ; void bios_puts(char *s);
@@ -115,7 +161,7 @@ bootloader_entry:
     ; Hello there!
     mov si, message_boot_hello_world
 
-    ; Loading kernel 
+    ; Loading kernel
     mov ah, INT_DISK_READ_SECTORS    ; Subroutine code
     mov al, 7                        ; Count of sectors to read
     mov ch, 0x00                     ; Cylinder number @research
@@ -137,7 +183,7 @@ bootloader_entry:
     jmp KERNEL_SECTOR_ADDR
     ret
 
-message_boot_hello_world:	
+message_boot_hello_world:
     db "BOOT: Hello there!", ENDLINE, 0
 message_boot_kernel_load_ok:
     db "BOOT: Loaded the kernel!", ENDLINE, 0
@@ -161,38 +207,90 @@ memory_zero:
     push si
     push cx
 
-    mov cx, 0
-.memory_zero__loop:
-    cmp cx, bx
+    mov cx, 0               ; Index
+
+.memory_zero__loop: 
+    cmp cx, bx              ; Checking if buffer size and index are equals
     je .memory_zero__end
+
     mov byte [si], 0
+
     inc si
     inc cx
     jmp .memory_zero__loop
-.memory_zero__end:
 
+.memory_zero__end:
     pop cx
     pop si
     ret
+; end memory_zero
 
 ;
-; void bios_read_input(void *buffer)
-; 
+; int string_is_equal(const char *a, const char *b);
+;
+; @breaf Compares two strings
+;
+; @param si A string
+; @param bx B string
+; @return cx 0 - if not equals, 1 - if equals
+;
+string_is_equal:
+    push si
+    push bx
+    push ax
+
+    jmp .string_is_equal__compare
+
+.string_is_equal__compare:
+    mov ah, [bx]
+    cmp [si], ah
+    jne .string_is_equal__first_zero
+
+    inc si
+    inc bx
+    jmp .string_is_equal__compare
+
+.string_is_equal__first_zero:
+    cmp byte [bx], 0
+    jne .string_is_equal__not_equal
+
+    jmp .string_is_equal__is_equal
+
+.string_is_equal__is_equal:
+    mov cx, 1
+    jmp .string_is_equal__end
+
+.string_is_equal__not_equal:
+    mov cx, 0
+    jmp .string_is_equal__end
+
+.string_is_equal__end:
+    pop si
+    pop bx
+    pop ax
+    ret
+; end string_is_equal
+
+;
+; void bios_read_input(void *buffer, int buffer_size)
+;
 ; @breaf Write input to specified buffer
 ;
 ; @param si Address of the buffer in which routine should write user input.
+; @param bx Buffer size limit
 ;
 bios_read_input:
     push ax
     push cx
+    push bx
 
-    xor cx, cx
+    mov cx, 0
 
     jmp .bios_read_input__loop
 
 .bios_read_input__loop:
-    mov ah, 0
-    int 0x16
+    mov ah, INT_KEYBOARD_READ_CHAR      ; Outputs character in AH and AL registers
+    int INT_KEYBOARD
 
     cmp al, 0x0d ; Enter key
     je .bios_read_input__handle_enter
@@ -200,56 +298,45 @@ bios_read_input:
     cmp al, 0x08 ; Backspace key
     je .bios_read_input__handle_backspace
 
-    mov [si], al
+    mov [si], al        ; Next character in the buffer
     inc si
     inc cx
 
-    mov ah, 0x0e
-    mov bh, 0
-    mov bl, 0x07
-    int 0x10
+    mov ah, INT_VIDEO_TTY_WRITE_CHAR
+    mov bh, 0x00        ; black background
+    mov bl, 0x07        ; white foreground
+    int INT_VIDEO
 
-    cmp cx, 255
+    cmp cx, bx
     je .bios_read_input__handle_enter
     jmp .bios_read_input__loop
 
 .bios_read_input__handle_enter:
-
-    mov ah, 0x0e   ; char display ?
-    mov al, 0x0d   ; move caret on new line (\r\n) ?
-    mov bh, 0      ; 0 - black background 
-    mov bl, 0x07   ; 7 - white foreground
-    int 0x10
-    mov al, 0xa    ; move caret to new line (\r\n) ?
-    int 0x10
-
-    mov byte [si], 0 ; Move \0 to the line end
-
+    mov byte [si], 0x00 ; Move \0 to the line end
     jmp .bios_read_input__end
 
 .bios_read_input__handle_backspace:
-    
     cmp cx, 0                    ; Ignore backspace if buffer is empty
     je .bios_read_input__loop
 
-    mov ah, 0x0e
-    mov al, 0x08  ; backspace ?
-    int 0x10
+    mov ah, INT_VIDEO_TTY_WRITE_CHAR
 
-    mov ah, 0x0e
-    mov al, 0x20  ; space ?
-    int 0x10
+    mov al, 0x08                 ; '\b' character (backspace)
+    int INT_VIDEO
 
-    mov ah, 0x0e
-    mov al, 0x08  ; backspace ?
-    int 0x10
+    mov al, 0x20                 ; ' ' character (space)
+    int INT_VIDEO
 
-    mov byte [si], 0
+    mov al, 0x08                 ; '\b' character (backspace)
+    int INT_VIDEO
+
+    mov byte [si], 0x00          ; Zeroing current character in the buffer.
     dec si
     dec cx
     jmp .bios_read_input__loop
 
 .bios_read_input__end:
+    pop bx
     pop cx
     pop ax
     ret
@@ -285,6 +372,38 @@ kernel_boot:
 ; @breaf Handles what to do when user types commands.
 ;
 kernel_shell_handle_command:
+    push si
+
+    ;
+    ; TODO(gr3yknigh1): `string_is_equal` might be broken. If in `si`
+    ; goes user input, compare succeed if in command will be additional
+    ; character:
+    ;
+    ;     * 'help'  - failure
+    ;     * 'help ' - success
+    ;
+    ; [2024/10/24]
+    ;
+
+    mov bx, si
+    mov si, kernel_command_label__help
+    call string_is_equal
+    cmp cx, 1
+    je .kernel_shell_handle_command__handle_help
+    jmp .kernel_shell_handle_command__handle_invalid_command
+
+.kernel_shell_handle_command__handle_invalid_command:
+    mov si, message_kernel_shell_invalid_command
+    call bios_puts
+    jmp .kernel_shell_handle_command__end
+
+.kernel_shell_handle_command__handle_help:
+    mov si, message_kernel_welcome
+    call bios_puts
+    jmp .kernel_shell_handle_command__end
+
+.kernel_shell_handle_command__end:
+    pop si
     ret
 ; end kernel_shell_handle_command
 
@@ -294,12 +413,13 @@ kernel_shell_handle_command:
 ; @breaf Shell mainloop, which waits new commands to be typed.
 ;
 kernel_shell_loop:
+    push si
+    push bx
+
     ; TODO(gr3yknigh1): Make it not infinite [2024/10/24]
     jmp .kernel_shell_loop__begin
 
 .kernel_shell_loop__begin:
-    push si
-    push bx
 
     ; Clear input buffer
     mov si, kernel_shell_input_buffer
@@ -312,13 +432,18 @@ kernel_shell_loop:
 
     ; Reading user input
     mov si, kernel_shell_input_buffer
+    mov bx, KERNEL_INPUT_BUFFER_SIZE
     call bios_read_input
+    call bios_put_newline
 
+    ; Handle user input
     mov si, kernel_shell_input_buffer
     call kernel_shell_handle_command
 
+    call bios_put_newline
+
     jmp .kernel_shell_loop__begin
- 
+
     pop bx
     pop si
     ret
@@ -329,5 +454,15 @@ message_kernel_welcome:
 message_kernel_exiting:
     db "KERNEL: Quiting...", ENDLINE, 0
 
+message_kernel_shell_invalid_command:
+    db "SHELL: Invalid command", ENDLINE, 0
+
 kernel_shell_input_buffer times KERNEL_INPUT_BUFFER_SIZE db 0
 kernel_shell_prompt db "> ", 0
+
+kernel_command_label__help db "help", 0
+kernel_command_label__clear db "clear", 0
+kernel_command_label__info db "info", 0
+kernel_command_label__reboot db "reboot", 0
+kernel_command_label__echo db "echo", 0
+
