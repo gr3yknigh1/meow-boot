@@ -72,6 +72,7 @@ bios_halt:
 	hlt
 .bios_halt_loop:
 	jmp	.bios_halt_loop
+    ret
 
 ;
 ; void bios_puts(char *s);
@@ -182,7 +183,77 @@ memory_zero:
 ; @param si Address of the buffer in which routine should write user input.
 ;
 bios_read_input:
+    push ax
+    push cx
+
+    xor cx, cx
+
+    jmp .bios_read_input__loop
+
+.bios_read_input__loop:
+    mov ah, 0
+    int 0x16
+
+    cmp al, 0x0d ; Enter key
+    je .bios_read_input__handle_enter
+
+    cmp al, 0x08 ; Backspace key
+    je .bios_read_input__handle_backspace
+
+    mov [si], al
+    inc si
+    inc cx
+
+    mov ah, 0x0e
+    mov bh, 0
+    mov bl, 0x07
+    int 0x10
+
+    cmp cx, 255
+    je .bios_read_input__handle_enter
+    jmp .bios_read_input__loop
+
+.bios_read_input__handle_enter:
+
+    mov ah, 0x0e   ; char display ?
+    mov al, 0x0d   ; move caret on new line (\r\n) ?
+    mov bh, 0      ; 0 - black background 
+    mov bl, 0x07   ; 7 - white foreground
+    int 0x10
+    mov al, 0xa    ; move caret to new line (\r\n) ?
+    int 0x10
+
+    mov byte [si], 0 ; Move \0 to the line end
+
+    jmp .bios_read_input__end
+
+.bios_read_input__handle_backspace:
+    
+    cmp cx, 0                    ; Ignore backspace if buffer is empty
+    je .bios_read_input__loop
+
+    mov ah, 0x0e
+    mov al, 0x08  ; backspace ?
+    int 0x10
+
+    mov ah, 0x0e
+    mov al, 0x20  ; space ?
+    int 0x10
+
+    mov ah, 0x0e
+    mov al, 0x08  ; backspace ?
+    int 0x10
+
+    mov byte [si], 0
+    dec si
+    dec cx
+    jmp .bios_read_input__loop
+
+.bios_read_input__end:
+    pop cx
+    pop ax
     ret
+; end bios_read_input
 
 ;
 ; [[noreturn]] void kernel_boot(void);
@@ -206,6 +277,7 @@ kernel_boot:
 
     pop si
     ret
+; end kernel_boot
 
 ;
 ; void kernel_shell_handle_command(void *input_buffer);
@@ -214,6 +286,7 @@ kernel_boot:
 ;
 kernel_shell_handle_command:
     ret
+; end kernel_shell_handle_command
 
 ;
 ; void kernel_shell_loop(void);
@@ -249,6 +322,7 @@ kernel_shell_loop:
     pop bx
     pop si
     ret
+; end kernel_shell_loop
 
 message_kernel_welcome:
     db "KERNEL: Hello sailor!", ENDLINE, 0
