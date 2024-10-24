@@ -1,5 +1,5 @@
 ;
-; BADOS Bootloader. Nothing serious. Just for fun and education.
+; BADOS Bootloader. Nothing serious like Linux. Just for fun and education.
 ;
 ; FILE          source/boot.asm
 ;
@@ -11,14 +11,18 @@
 ; REFERENCES
 ;
 ;      - Table for BIOS interupts: <www.ctyme.com/intr>
+;      - Halt instruction of x86: <https://www.felixcloutier.com/x86/hlt>
 ;
 
+;
 ; @breaf BIOS interupt call list.
-; @see https://en.wikipedia.org/wiki/BIOS_interrupt_call
+; @see <https://en.wikipedia.org/wiki/BIOS_interrupt_call>
+;
 %define INT_VIDEO    10h
-%define INT_DISK     13h   ; @see https://en.wikipedia.org/wiki/INT_13H
+%define INT_DISK     13h   ; @see <https://en.wikipedia.org/wiki/INT_13H>
 %define INT_MISC     15h
 %define INT_KEYBOARD 16h
+%define INT_REBOOT   19h   ; @see <https://www.ctyme.com/intr/rb-2270.htm>
 
 ; INT_VIDEO
 ; AH - register
@@ -49,26 +53,47 @@
 org		BOOT_SECTOR_ADDR
 bits	16
 
+;
+; [[noreturn]] void start(void);
+;
+; @breaf Calls the bootloader entrypoint and halt.
+;
 start:
 	call bootloader_entry
     call bios_halt
     ret
+; end start
 
 ;
 ; void bios_wait(int milliseconds);
 ;
 ; @breaf Sleeps for N milliseconds
 ; @param si
+;
 bios_wait:
     push si
     push ax
+
     mov ax, INT_MISC_WAIT   ; Wait subroutine
     mov dx, si              ; Milliseconds
     int INT_MISC
+
     pop ax
     pop si
     ret
 ; end bios_wait
+
+;
+; [[noreturn]] void bios_reboot(void);
+;
+; @breaf Reboots computer
+;
+bios_reboot:
+    mov ah, 0
+    int INT_REBOOT
+    jmp $
+    ret
+; end bios_reboot
 
 ;
 ; void bios_put_newline(void);
@@ -272,6 +297,35 @@ string_is_equal:
 ; end string_is_equal
 
 ;
+; int string_is_empty(char *a);
+;
+; @param si String address
+; @return cx 0 - if not empty, 1 - if empty
+;
+string_is_empty:
+    push ax
+    push si
+    
+    mov ax, [si]
+    cmp ax, 0
+    jne .string_is_empty__not_empty
+
+    jmp .string_is_empty__is_empty
+
+.string_is_empty__is_empty:
+    mov cx, 1
+    jmp .string_is_empty__end
+
+.string_is_empty__not_empty:
+    mov cx, 0
+    jmp .string_is_empty__end
+
+.string_is_empty__end:
+    pop si
+    pop ax
+    ret
+
+;
 ; void bios_read_input(void *buffer, int buffer_size)
 ;
 ; @breaf Write input to specified buffer
@@ -374,6 +428,11 @@ kernel_boot:
 kernel_shell_handle_command:
     push si
 
+    mov si, si
+    call string_is_empty
+    cmp cx, 1
+    je .kernel_shell_handle_command__handle_empty_command
+
     ;
     ; TODO(gr3yknigh1): `string_is_equal` might be broken. If in `si`
     ; goes user input, compare succeed if in command will be additional
@@ -386,20 +445,45 @@ kernel_shell_handle_command:
     ;
 
     mov bx, si
+
     mov si, kernel_command_label__help
     call string_is_equal
     cmp cx, 1
     je .kernel_shell_handle_command__handle_help
+
+    mov si, kernel_command_label__reboot
+    call string_is_equal
+    cmp cx, 1
+    je .kernel_shell_handle_command__handle_reboot
+
+    mov si, kernel_command_label__clear
+    call string_is_equal
+    cmp cx, 1
+    je .kernel_shell_handle_command__handle_clear
+
     jmp .kernel_shell_handle_command__handle_invalid_command
+
+.kernel_shell_handle_command__handle_empty_command:
+    mov si, message_kernel_shell_empty_command
+    call bios_puts
+    jmp .kernel_shell_handle_command__end
 
 .kernel_shell_handle_command__handle_invalid_command:
     mov si, message_kernel_shell_invalid_command
     call bios_puts
     jmp .kernel_shell_handle_command__end
 
+.kernel_shell_handle_command__handle_clear:
+    call bios_tty_clear 
+    jmp .kernel_shell_handle_command__end
+
 .kernel_shell_handle_command__handle_help:
-    mov si, message_kernel_welcome
+    mov si, message_kernel_welcome_sailor
     call bios_puts
+    jmp .kernel_shell_handle_command__end
+
+.kernel_shell_handle_command__handle_reboot:
+    call bios_reboot
     jmp .kernel_shell_handle_command__end
 
 .kernel_shell_handle_command__end:
@@ -450,10 +534,13 @@ kernel_shell_loop:
 ; end kernel_shell_loop
 
 message_kernel_welcome:
+    db "Welcome to BadOS!", ENDLINE, 0
+message_kernel_welcome_sailor:
     db "KERNEL: Hello sailor!", ENDLINE, 0
 message_kernel_exiting:
     db "KERNEL: Quiting...", ENDLINE, 0
-
+message_kernel_shell_empty_command:
+    db "SHELL: Empty command", ENDLINE, 0
 message_kernel_shell_invalid_command:
     db "SHELL: Invalid command", ENDLINE, 0
 
