@@ -28,6 +28,7 @@ bits	16
 start:
 	call bootloader_entry
     call bios_halt
+    ret
 
 ;
 ; void bios_tty_clear(void);
@@ -60,17 +61,17 @@ bios_halt:
 bios_puts:
 	push si
 	push ax
-    jmp .bios_puts_loop
-.bios_puts_loop:
+    jmp .bios_puts__loop
+.bios_puts__loop:
 	lodsb					; Loads next character in al
 	or al, al				; Is next character is \0
-	jz .bios_puts_done
+	jz .bios_puts__done
 
 	mov ah, INT_VIDEO_TTY_WRITE_CHAR
 	int INT_VIDEO
 
-	jmp .bios_puts_loop
-.bios_puts_done:
+	jmp .bios_puts__loop
+.bios_puts__done:
 	pop ax
 	pop si
 	ret
@@ -92,7 +93,7 @@ bootloader_entry:
 	mov sp, BOOT_SECTOR_ADDR	; Stack will grows downwards
 
     ; Hello there!
-    mov si, message_hello_world
+    mov si, message_boot_hello_world
 
     ; Loading kernel 
     mov ah, INT_DISK_READ_SECTORS    ; Subroutine code
@@ -103,13 +104,13 @@ bootloader_entry:
     mov dl, 0x80                     ; Drive number
     mov bx, KERNEL_SECTOR_ADDR
     int INT_DISK
-    jc .bootloader_entry_kernel_load_error
-    jmp .bootloader_entry_kernel_load_ok
-.bootloader_entry_kernel_load_error:
+    jc .bootloader_entry__kernel_load_error
+    jmp .bootloader_entry__kernel_load_ok
+.bootloader_entry__kernel_load_error:
 	mov si, message_boot_kernel_load_error
 	call bios_puts
     ret
-.bootloader_entry_kernel_load_ok:
+.bootloader_entry__kernel_load_ok:
     mov si, message_boot_kernel_load_ok
     call bios_puts
     jmp KERNEL_SECTOR_ADDR
@@ -127,6 +128,28 @@ dw		BOOT_SECTOR_MAGIC
 
 jmp kernel_boot
 
+%define KERNEL_INPUT_BUFFER_SIZE 255
+
+;
+; void io_memory_zero(void *buffer, int buffer_size);
+;
+; @breaf Zeroing the buffer.
+; @param si Buffer address
+; @param bx Buffer size
+io_memory_zero:
+    push cx
+    mov cx, 0
+.io_memory_zero__loop:
+    cmp cx, bx
+    je .io_memory_zero__end
+    mov byte [si], 0
+    inc si
+    inc cx
+    jmp .io_memory_zero__loop
+.io_memory_zero__end:
+    pop cx
+    ret
+
 ;
 ; [[noreturn]] void kernel_boot(void);
 ;
@@ -138,9 +161,28 @@ kernel_boot:
     mov si, message_kernel_welcome
     call bios_puts
 
-
+    call kernel_shell_loop
 
     call bios_halt
 
+    ret
+
+kernel_shell_loop:
+    ; TODO(gr3yknigh1): Make it not infinite [2024/10/24]
+
+    ; Clear input buffer
+    mov si, kernel_shell_input_buffer
+    mov bx, KERNEL_INPUT_BUFFER_SIZE
+    call io_memory_zero
+
+    ; Printing the prompt prefix
+    mov si, kernel_shell_prompt
+    call bios_puts
+
+    ret
+
 message_kernel_welcome:
     db "KERNEL: Hello sailor!", ENDLINE, 0
+
+kernel_shell_input_buffer times KERNEL_INPUT_BUFFER_SIZE db 0
+kernel_shell_prompt db "> ", 0
