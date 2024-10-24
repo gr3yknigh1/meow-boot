@@ -220,7 +220,7 @@ dw		BOOT_SECTOR_MAGIC
 
 jmp kernel_boot
 
-%define KERNEL_INPUT_BUFFER_SIZE 255
+%define KERNEL_INPUT_BUFFER_SIZE 255h
 
 ;
 ; void memory_zero(void *buffer, int buffer_size);
@@ -357,8 +357,6 @@ bios_read_input:
     inc cx
 
     mov ah, INT_VIDEO_TTY_WRITE_CHAR
-    mov bh, 0x00        ; black background
-    mov bl, 0x07        ; white foreground
     int INT_VIDEO
 
     cmp cx, bx
