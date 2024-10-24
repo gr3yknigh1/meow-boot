@@ -1,22 +1,30 @@
-.PHONY: default all dirs
+.PHONY: default all dirs clean run
 
+RM  := rm -rf
 ASM := nasm
+QEMU := qemu-system-x86_64
 
-SRC_DIR   := src
+SRC_DIR   := source
 BUILD_DIR := build
+
+BOOT_FLOPPY_IMAGE := $(BUILD_DIR)/boot_floppy.img
 
 default: all
 
-all: dirs $(BUILD_DIR)/main_floppy.img
+all: dirs $(BOOT_FLOPPY_IMAGE)
 
 dirs:
 	[ -d $(BUILD_DIR) ] || mkdir -p $(BUILD_DIR) || true
 
-$(BUILD_DIR)/main_floppy.img: $(BUILD_DIR)/main.o
-	cp $(BUILD_DIR)/main.o $(BUILD_DIR)/main_floppy.img
-	truncate -s 1440k $(BUILD_DIR)/main_floppy.img
+$(BOOT_FLOPPY_IMAGE): $(BUILD_DIR)/boot.o
+	cp $(BUILD_DIR)/boot.o $(BOOT_FLOPPY_IMAGE)
+	truncate -s 1440k $(BOOT_FLOPPY_IMAGE)
 
+$(BUILD_DIR)/boot.o: $(SRC_DIR)/boot.asm
+	$(ASM) $^ -f bin -o $@
 
-$(BUILD_DIR)/main.o: $(SRC_DIR)/main.asm
-	$(ASM) $(SRC_DIR)/main.asm -f bin -o $(BUILD_DIR)/main.o
+clean:
+	$(RM) $(BUILD_DIR)
 
+run: $(BOOT_FLOPPY_IMAGE)
+	$(QEMU) $(BOOT_FLOPPY_IMAGE)
