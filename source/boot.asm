@@ -12,21 +12,26 @@
 ;
 ;      - Table for BIOS interupts: <www.ctyme.com/intr>
 ;      - Halt instruction of x86: <https://www.felixcloutier.com/x86/hlt>
+;      - Melisa Kernel: <https://github.com/JustVic/melisa_kernel>
+;      - ATA PIO Mode: <https://wiki.osdev.org/ATA_PIO_Mode>
+;      - Entering the long mode: https://os.phil-opp.com/entering-longmode/
 ;
 
 ;
 ; @breaf BIOS interupt call list.
 ; @see <https://en.wikipedia.org/wiki/BIOS_interrupt_call>
+; @see <https://wiki.osdev.org/Ralf_Brown's_Interrupt_List>
 ;
-%define INT_VIDEO    10h
+%define INT_VIDEO    10h   ; @see <https://www.ctyme.com/intr/rb-0106.htm>
 %define INT_DISK     13h   ; @see <https://en.wikipedia.org/wiki/INT_13H>
-%define INT_MISC     15h
-%define INT_KEYBOARD 16h
+%define INT_MISC     15h   ; @see <http://www.techhelpmanual.com/221-int_15h_86h__wait.html>
+                           ; @see <http://vitaly_filatov.tripod.com/ng/asm/asm_026.13.html>
+%define INT_KEYBOARD 16h   ; @see <https://www.ctyme.com/intr/rb-1754.htm>
 %define INT_REBOOT   19h   ; @see <https://www.ctyme.com/intr/rb-2270.htm>
 
 ; INT_VIDEO
 ; AH - register
-%define INT_VIDEO_SET_MODE       00h
+%define INT_VIDEO_SET_MODE       00h   ; @see <https://mendelson.org/wpdos/videomodes.txt>
 %define INT_VIDEO_TTY_WRITE_CHAR 0eh
 
 ; INT_DISK
@@ -459,6 +464,11 @@ kernel_shell_handle_command:
     cmp cx, 1
     je .kernel_shell_handle_command__handle_clear
 
+    mov si, kernel_command_label__meow
+    call string_is_equal
+    cmp cx, 1
+    je .kernel_shell_handle_command__handle_meow
+
     jmp .kernel_shell_handle_command__handle_invalid_command
 
 .kernel_shell_handle_command__handle_empty_command:
@@ -468,6 +478,11 @@ kernel_shell_handle_command:
 
 .kernel_shell_handle_command__handle_invalid_command:
     mov si, message_kernel_shell_invalid_command
+    call bios_puts
+    jmp .kernel_shell_handle_command__end
+
+.kernel_shell_handle_command__handle_meow:
+    mov si, message_kernel_meow
     call bios_puts
     jmp .kernel_shell_handle_command__end
 
@@ -534,7 +549,9 @@ kernel_shell_loop:
 message_kernel_welcome:
     db "Welcome to BadOS!", ENDLINE, 0
 message_kernel_welcome_sailor:
-    db "KERNEL: Hello sailor!", ENDLINE, 0
+    db "Hello sailor!", ENDLINE, 0
+message_kernel_meow:
+    db "Meow meow!!!", ENDLINE, 0
 message_kernel_exiting:
     db "KERNEL: Quiting...", ENDLINE, 0
 message_kernel_shell_empty_command:
@@ -547,7 +564,7 @@ kernel_shell_prompt db "> ", 0
 
 kernel_command_label__help db "help", 0
 kernel_command_label__clear db "clear", 0
-kernel_command_label__info db "info", 0
 kernel_command_label__reboot db "reboot", 0
-kernel_command_label__echo db "echo", 0
+kernel_command_label__meow db "meow", 0
+kernel_command_label__stub db "stub", 0   ; Idk, last listed label only processed without last character.
 
