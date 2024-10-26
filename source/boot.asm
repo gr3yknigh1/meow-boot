@@ -14,7 +14,7 @@
 ;      - Halt instruction of x86: <https://www.felixcloutier.com/x86/hlt>
 ;      - Melisa Kernel: <https://github.com/JustVic/melisa_kernel>
 ;      - ATA PIO Mode: <https://wiki.osdev.org/ATA_PIO_Mode>
-;      - Entering the long mode: https://os.phil-opp.com/entering-longmode/
+;      - Entering the long mode: <https://os.phil-opp.com/entering-longmode>
 ;
 
 ;
